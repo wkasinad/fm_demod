@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "rtl-sdr.h"
-#include "convenience/convenience.h"
+#include "convenience.h"
 
 static rtlsdr_dev_t *dev = NULL;
 
