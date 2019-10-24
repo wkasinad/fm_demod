@@ -8,7 +8,46 @@
 #include "rtl-sdr.h"
 #include "convenience.h"
 
-static rtlsdr_dev_t *dev = NULL;
+#define DEFAULT_SAMPLE_RATE		24000
+#define DEFAULT_BUF_LENGTH		(1 * 16384)
+#define MAXIMUM_OVERSAMPLE		16
+#define MAXIMUM_BUF_LENGTH		(MAXIMUM_OVERSAMPLE * DEFAULT_BUF_LENGTH)
+
+struct dongle_state {
+    uint16_t buf16[MAXIMUM_BUF_LENGTH];
+    uint32_t buf_len;
+    rtlsdr_dev_t *dev;
+};
+
+struct dongle_state dongle;
+
+static void fm_callback(unsigned char *buf, uint32_t len, void *ctx) {
+	int i;
+	struct dongle_state *s = ctx;
+
+	for (i=0; i<(int)len; i++) {
+		s->buf16[i] = (int16_t)buf[i] - 127;}
+}
+
+int write_buf(struct dongle_state * s, uint16_t * buf, int buf_len) {
+    struct dongle_state * dongle = s;
+    int i;
+    for(i = 0; i < buf_len; i++) {
+        dongle->buf16[i] = buf[i];
+    }
+    dongle->buf_len = buf_len;
+    return 0;
+}
+
+int print_buf(struct dongle_state * s) {
+    struct dongle_state * dongle = s;
+    int i;
+    for(i = 0; i < (dongle->buf_len / sizeof(dongle->buf16[0])); i++) {
+        printf("%x,", dongle->buf16[i]);
+    }
+    printf("\n");
+    return 0;
+}
 
 int main(int argc, char **argv) {
     int r;
@@ -19,16 +58,25 @@ int main(int argc, char **argv) {
         fprintf(stderr, "failed to find sdr device\n");
         exit(1);
     }
-    r = rtlsdr_open(&dev, (uint32_t)dev_index);
+
+    r = rtlsdr_open(&dongle.dev, (uint32_t)dev_index);
     if (r < 0) {
         fprintf(stderr, "failed to open device %d\n", dev_index);
     }
+    printf("opened device\n");
 
-    printf("probably opened connection to sdr.\n");
+    printf("dongle buf is ");
+    print_buf(&dongle);
 
-    rtlsdr_close(dev);
+    // rtlsdr_read_async(dongle.dev, fm_callback, (void *)&dongle, 0, dongle.buf_len);
+    uint16_t test[] = {1, 20, 3, 44, 4};
+    write_buf(&dongle, test, sizeof(test));
 
-    printf("closed connection to sdr. exiting\n");
+    printf("dongle buf after read is ");
+    print_buf(&dongle);
+
+    rtlsdr_close(dongle.dev);
+    printf("closed device\n");
 
     return 0;
 }
