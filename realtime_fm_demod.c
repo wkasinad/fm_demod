@@ -23,10 +23,11 @@ struct dongle_state dongle;
 
 static void fm_callback(unsigned char *buf, uint32_t len, void *ctx) {
 	int i;
-	struct dongle_state *s = ctx;
-
+	struct dongle_state *dongle = ctx;
 	for (i=0; i<(int)len; i++) {
-		s->buf16[i] = (int16_t)buf[i] - 127;}
+		dongle->buf16[i] = (int16_t)buf[i] - 127;
+    }
+    dongle->buf_len = len;
 }
 
 int write_buf(struct dongle_state * s, uint16_t * buf, int buf_len) {
@@ -39,7 +40,7 @@ int write_buf(struct dongle_state * s, uint16_t * buf, int buf_len) {
     return 0;
 }
 
-int print_buf(struct dongle_state * s) {
+int read_buf(struct dongle_state * s) {
     struct dongle_state * dongle = s;
     int i;
     for(i = 0; i < (dongle->buf_len / sizeof(dongle->buf16[0])); i++) {
@@ -66,14 +67,12 @@ int main(int argc, char **argv) {
     printf("opened device\n");
 
     printf("dongle buf is ");
-    print_buf(&dongle);
+    read_buf(&dongle);
 
-    // rtlsdr_read_async(dongle.dev, fm_callback, (void *)&dongle, 0, dongle.buf_len);
-    uint16_t test[] = {1, 20, 3, 44, 4};
-    write_buf(&dongle, test, sizeof(test));
+    rtlsdr_read_async(dongle.dev, fm_callback, (void *)&dongle, 0, dongle.buf_len);
 
     printf("dongle buf after read is ");
-    print_buf(&dongle);
+    read_buf(&dongle);
 
     rtlsdr_close(dongle.dev);
     printf("closed device\n");
