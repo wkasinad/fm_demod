@@ -1436,7 +1436,7 @@ int rtlsdr_get_index_by_serial(const char *serial)
 	return -3;
 }
 
-int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
+int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index, uint32_t debug)
 {
 	int r;
 	int i;
@@ -1460,6 +1460,8 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 		free(dev);
 		return -1;
 	}
+
+	libusb_set_debug(dev->ctx, debug);
 
 	dev->dev_lost = 1;
 
@@ -1898,7 +1900,8 @@ int rtlsdr_read_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx,
 					"usbfs buffer size with the "
 					"following command:\n"
 					"echo 0 > /sys/module/usbcore"
-					"/parameters/usbfs_memory_mb\n", i);
+					"/parameters/usbfs_memory_mb\n"
+					"r = %s\n", i, libusb_error_name(r));
 			dev->async_status = RTLSDR_CANCELING;
 			break;
 		}
