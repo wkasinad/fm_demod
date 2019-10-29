@@ -8,20 +8,16 @@
 #include "rtl-sdr.h"
 #include "convenience.h"
 
-#define DEFAULT_SAMPLE_RATE		24000
-#define DEFAULT_BUF_LENGTH		(1 * 16384)
-#define MAXIMUM_OVERSAMPLE		16
-#define MAXIMUM_BUF_LENGTH		(MAXIMUM_OVERSAMPLE * DEFAULT_BUF_LENGTH)
+#define DEFAULT_SAMPLE_RATE		2048000
+#define DEFAULT_BUF_LENGTH		16384
+#define MINIMAL_BUF_LENGTH		512
+#define MAXIMAL_BUF_LENGTH		(256 * 16384)
 
-// structure that maintains the dongle state in the demod program
-struct dongle_state {
-    uint16_t buf16[MAXIMUM_BUF_LENGTH];
-    uint32_t buf_len;
-    rtlsdr_dev_t *dev;
+struct sdr_data {
+    uint8_t *buffer;
+    int buf_len;
+    int buf_max;
 };
-
-// global variables
-struct dongle_state dongle;
 
 /*
  * Callback function for rtlsdr_read_async
@@ -36,35 +32,41 @@ static void fm_callback(unsigned char *buf, uint32_t len, void *ctx) {
     printf("fm callback\n");
 }
 
-/*
- * Writes a predefined buffer into a dongle state structure
- * Used to test the read function
- * s : the dongle struct
- * buf : an array of uint16
- * buf_len : lenth of the buffer
- */
-int write_buf(struct dongle_state * s, uint16_t * buf, int buf_len) {
-    struct dongle_state * dongle = s;
-    int i;
-    for(i = 0; i < buf_len; i++) {
-        dongle->buf16[i] = buf[i];
-    }
-    dongle->buf_len = buf_len;
-    return 0;
+void init_sdr(struct sdr_data *sdr_data) {
+    struct sdr_data *sdr = sdr_data;
+    sdr->buf_max = DEFAULT_BUF_LENGTH * sizeof(*sdr->buffer);
+    sdr->buffer = malloc(sdr->buf_max);
+}
+
+void destroy_sdr(struct sdr_data *sdr_data) {
+    struct sdr_data *sdr = sdr_data;
+    free(sdr->buffer);
+    sdr->buffer = NULL;
 }
 
 /*
- * Prints out the state of the dongle state structure's buf16
- * s : dongle state structure from which the buffer is read
+ * Writes a predefined buffer into a dongle state structure
+ * Used to test the read function
  */
-int read_buf16(struct dongle_state * s) {
-    struct dongle_state * dongle = s;
+void write_buffer(struct sdr_data *sdr_data, uint32_t *source, uint32_t source_len) {
+    struct sdr_data *sdr = sdr_data;
     int i;
-    for(i = 0; i < (dongle->buf_len / sizeof(dongle->buf16[0])); i++) {
-        printf("%x,", dongle->buf16[i]);
+    for(i = 0; i < source_len; i++) {
+        sdr->buffer[i] = source[i];
+    }
+    sdr->buf_len = source_len;
+}
+
+/*
+ * Prints out the state of the dongle state structure's buf
+ */
+void print_buffer(struct sdr_data *sdr_data) {
+    struct sdr_data *sdr = sdr_data;
+    int i;
+    for(i = 0; i < sdr->buf_len; i++) {
+        printf("%x,", sdr->buffer[i]);
     }
     printf("\n");
-    return 0;
 }
 
 /*
@@ -84,34 +86,49 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    uint32_t debug = 4; // 4 for all debug, 3 for info, 0 for nothing
+    // 4 for all debug, 3 for info, 0 for nothing
+    uint32_t debug = 0;
+    rtlsdr_dev_t *dev = NULL;
+
 
     // open connection to the rtlsdr device
     int r;
-    r = rtlsdr_open(&dongle.dev, (uint32_t)dev_index, debug);
+    r = rtlsdr_open(&dev, (uint32_t)dev_index, debug);
     if (r < 0) {
         fprintf(stderr, "failed to open device %d\n", dev_index);
     }
     printf("opened device\n");
 
+    //create the buffer to operate on
+    struct sdr_data sdr;
+    init_sdr(&sdr);
+
     // print the state of the dongle buffer before modification
     // always going to be empty
     printf("dongle buf is ");
-    read_buf16(&dongle);
+    print_buffer(&sdr);
 
-    // from librtlsdr:
-    // What I think is the primary function in the dongle thread of rtl_fm
-    // Should read from the rtlsdr device and write to the buffer structure in
-    // the dongle.
-    // currently broken
-    rtlsdr_read_async(dongle.dev, fm_callback, (void *)&dongle, 0, dongle.buf_len);
+    // test writing a buffer
+    // uint32_t test[] = {1, 2, 18, 42};
+    // uint32_t test_size = sizeof(test)/sizeof(test[0]);
+    // write_buffer(&sdr, test, test_size);
+
+    // reads from the rtlsdr dongle
+    verbose_reset_buffer(dev); // necessary if you want to read
+    r = rtlsdr_read_sync(dev, (void *)sdr.buffer, sdr.buf_max, &sdr.buf_len);
+    if (r < 0) {
+        fprintf(stderr, "WARNING: sync read failed with error code %d.\n", r);
+    }
+    printf("nread is %d\n", sdr.buf_len);
 
     // print the state of the dongle buffer after modification
     printf("dongle buf after read is ");
-    read_buf16(&dongle);
+    print_buffer(&sdr);
+
+    destroy_sdr(&sdr);
 
     // close connection to the rtlsdr device
-    rtlsdr_close(dongle.dev);
+    rtlsdr_close(dev);
     printf("closed device\n");
 
     return 0;
